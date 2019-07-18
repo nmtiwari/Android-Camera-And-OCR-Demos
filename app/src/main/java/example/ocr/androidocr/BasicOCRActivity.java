@@ -23,6 +23,7 @@ import android.os.HandlerThread;
 import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
+import android.widget.TextView;
 
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
@@ -46,6 +47,7 @@ public class BasicOCRActivity extends AppCompatActivity {
 
     private String mCameraId;
 
+// TODO: add some sort of rectangle to help user center its image
     private TextureView mCameraPreviewView;
 
     private CameraManager mCameraManager;
@@ -59,6 +61,8 @@ public class BasicOCRActivity extends AppCompatActivity {
     FirebaseVisionTextRecognizer mTextDetector;
 
     private ImageReader mImageReader;
+
+    private TextView mDettectedText;
 
     private CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
         @Override
@@ -88,6 +92,8 @@ public class BasicOCRActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         mCameraPreviewView = findViewById(R.id.camera_preview);
+
+        mDettectedText = findViewById(R.id.detectedText);
 
         openBackgroundThread();
 
@@ -249,7 +255,8 @@ public class BasicOCRActivity extends AppCompatActivity {
                 .addOnSuccessListener(new OnSuccessListener<FirebaseVisionText>() {
                     @Override
                     public void onSuccess(FirebaseVisionText firebaseVisionText) {
-                        System.out.println();
+                        // TODO: Handle your text blocks
+                        mDettectedText.setText(firebaseVisionText.getText());
                     }
                 })
                 .addOnFailureListener(

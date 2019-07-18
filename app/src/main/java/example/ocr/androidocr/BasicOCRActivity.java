@@ -4,6 +4,9 @@ import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -12,6 +15,8 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
+import android.media.ImageReader;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -19,7 +24,16 @@ import android.util.Size;
 import android.view.Surface;
 import android.view.TextureView;
 
-import java.util.Collections;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.FirebaseApp;
+import com.google.firebase.ml.vision.FirebaseVision;
+import com.google.firebase.ml.vision.common.FirebaseVisionImage;
+import com.google.firebase.ml.vision.text.FirebaseVisionText;
+import com.google.firebase.ml.vision.text.FirebaseVisionTextRecognizer;
+
+import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -42,10 +56,15 @@ public class BasicOCRActivity extends AppCompatActivity {
 
     private HandlerThread mHandlerThread;
 
+    FirebaseVisionTextRecognizer mTextDetector;
+
+    private ImageReader mImageReader;
+
     private CameraDevice.StateCallback mStateCallback = new CameraDevice.StateCallback() {
         @Override
         public void onOpened(@NonNull CameraDevice camera) {
             mCameraDevice = camera;
+
             createSessions();
         }
 
@@ -73,6 +92,8 @@ public class BasicOCRActivity extends AppCompatActivity {
         openBackgroundThread();
 
         requestPermissions();
+
+        FirebaseApp.initializeApp(this);
 
     }
 
@@ -103,7 +124,7 @@ public class BasicOCRActivity extends AppCompatActivity {
 
                     @Override
                     public void onSurfaceTextureUpdated(SurfaceTexture surface) {
-
+                        readText(mCameraPreviewView.getBitmap());
                     }
                 });
             }
@@ -164,12 +185,29 @@ public class BasicOCRActivity extends AppCompatActivity {
         try {
             SurfaceTexture texture = mCameraPreviewView.getSurfaceTexture();
             texture.setDefaultBufferSize(mCameraPreviewView.getWidth(), mCameraPreviewView.getHeight());
+
+            mImageReader = ImageReader.newInstance(mCameraPreviewView.getWidth(), mCameraPreviewView.getHeight(), ImageFormat.JPEG, 1);
+
+            mImageReader.setOnImageAvailableListener(new ImageReader.OnImageAvailableListener() {
+                @Override
+                public void onImageAvailable(ImageReader reader) {
+                    Image image = reader.acquireLatestImage();
+                    ByteBuffer byteBuffer = image.getPlanes()[0].getBuffer();
+                    byte[] bytes = new byte[byteBuffer.remaining()];
+                    byteBuffer.get(bytes);
+                    Bitmap myBitmap = BitmapFactory.decodeByteArray(bytes,0,bytes.length,null);
+                    readText(myBitmap);
+                    image.close();
+                }
+            }, mHandler);
+
             Surface previewSurface = new Surface(texture);
 
             final CaptureRequest.Builder captureRequestBuilder = mCameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             captureRequestBuilder.addTarget(previewSurface);
+            captureRequestBuilder.addTarget(mImageReader.getSurface());
 
-            mCameraDevice.createCaptureSession(Collections.singletonList(previewSurface), new CameraCaptureSession.StateCallback() {
+            mCameraDevice.createCaptureSession(Arrays.asList(previewSurface, mImageReader.getSurface()), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession session) {
                     try {
@@ -197,5 +235,30 @@ public class BasicOCRActivity extends AppCompatActivity {
             return false;
         }
         return true;
+    }
+
+
+    private void readText(Bitmap bitmap) {
+        FirebaseVisionImage image = FirebaseVisionImage.fromBitmap(Bitmap.createBitmap(bitmap));
+
+        if (mTextDetector == null) {
+            mTextDetector = FirebaseVision.getInstance().getOnDeviceTextRecognizer();
+        }
+
+        mTextDetector.processImage(image)
+                .addOnSuccessListener(new OnSuccessListener<FirebaseVisionText>() {
+                    @Override
+                    public void onSuccess(FirebaseVisionText firebaseVisionText) {
+                        System.out.println();
+                    }
+                })
+                .addOnFailureListener(
+                        new OnFailureListener() {
+                            @Override
+                            public void onFailure(@NonNull Exception e) {
+                                System.out.println("failed");
+                            }
+                        });
+
     }
 }
